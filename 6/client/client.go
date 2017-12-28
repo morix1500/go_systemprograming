@@ -2,10 +2,13 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"strings"
 )
 
@@ -27,10 +30,14 @@ func main() {
 			}
 			fmt.Printf("Access: %d\n", current)
 		}
-		request, err := http.NewRequest("POST", "http://localhost:8888", strings.NewReader(sendMessages[current]))
+		request, err := http.NewRequest(
+			"POST",
+			"http://localhost:8888",
+			strings.NewReader(sendMessages[current]))
 		if err != nil {
 			panic(err)
 		}
+		request.Header.Set("Accept-Encoding", "gzip")
 
 		err = request.Write(conn)
 		if err != nil {
@@ -44,11 +51,24 @@ func main() {
 			continue
 		}
 
-		dump, err := httputil.DumpResponse(response, true)
+		dump, err := httputil.DumpResponse(response, false)
 		if err != nil {
 			panic(err)
 		}
+		defer response.Body.Close()
+
 		fmt.Println(string(dump))
+
+		if response.Header.Get("Content-Encoding") == "gzip" {
+			reader, err := gzip.NewReader(response.Body)
+			if err != nil {
+				panic(err)
+			}
+			io.Copy(os.Stdout, reader)
+			reader.Close()
+		} else {
+			io.Copy(os.Stdout, response.Body)
+		}
 
 		current++
 		if current == len(sendMessages) {
